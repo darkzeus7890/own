@@ -1,0 +1,4 @@
+# adk_config.yaml
+agents:
+  - module: sequential_agent
+    name: healthflow_sequential

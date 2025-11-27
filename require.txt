@@ -1,0 +1,6 @@
+langchain
+langchain-google-genai
+langchain-community
+langgraph
+duckduckgo-search
+google-search-results
