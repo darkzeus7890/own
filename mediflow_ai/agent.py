@@ -23,6 +23,13 @@ from google.adk.agents import BaseAgent
 from google.adk.events import Event, EventActions
 from google.adk.sessions import Session 
 import os
+from google.adk.sessions import InMemorySessionService, Session
+from google.adk.memory import InMemoryMemoryService 
+
+
+APP_NAME = "MediFlow_AI"
+USER_ID = "medi_flow_user"
+MODEL = "gemini-2.0-flash"
 
 # ============================================================
 # Create logs directory
@@ -427,90 +434,64 @@ IMPORTANT: Do not store or transmit any user data outside this conversation. Alw
 )
 
 
-root_agent = triage_doctor_finder_agent
+# root_agent = triage_doctor_finder_agent
 
-APP_NAME = "memory_example_app"
-USER_ID = "mem_user"
-MODEL = "gemini-2.0-flash"
 
-from google.adk.sessions import InMemorySessionService, Session
-from google.adk.memory import InMemoryMemoryService 
 
 session_service = InMemorySessionService()
 memory_service = InMemoryMemoryService() 
 
 async def run_scenario():
-    # --- Scenario ---
-
-    # Turn 1: Capture some information in a session
-    print("--- Turn 1: Capturing Information ---")
-    runner1 = Runner(
-        # Start with the info capture agent
+  
+    print("----- Initializing Runner -----")
+    runner = Runner(
+       
         agent=triage_doctor_finder_agent,
         app_name=APP_NAME,
         session_service=session_service,
-        memory_service=memory_service # Provide the memory service to the Runner
+        memory_service=memory_service 
     )
-    session1_id = "session_info"
-    await runner1.session_service.create_session(app_name=APP_NAME, user_id=USER_ID, session_id=session1_id)
-    user_input1 = Content(parts=[Part(text="Hello")], role="user")
-    # Run the agent
+
+    print("----- Initializing Session ID, Creating Session -----")
+
+    session_id = "chat001"
+    await runner.session_service.create_session(app_name=APP_NAME, user_id=USER_ID, session_id=session_id)
+
+    print("----- Giving INPUT -----")
+    user_input = Content(parts=[Part(text="hello.")], role="user")
+
+    print("----- Taking Response -----")
     final_response_text = "(No final response)"
-    async for event in runner1.run_async(user_id=USER_ID, session_id=session1_id, new_message=user_input1):
+    async for event in runner.run_async(user_id=USER_ID, session_id=session_id, new_message=user_input):
         if event.is_final_response() and event.content and event.content.parts:
             final_response_text = event.content.parts[0].text
-    print(f"Agent 1 Response: {final_response_text}")
-    # Get the completed session
-    completed_session1 = await runner1.session_service.get_session(app_name=APP_NAME, user_id=USER_ID, session_id=session1_id)
-    # Add this session's content to the Memory Service
-    print("\n--- Adding Session 1 to Memory ---")
-    await memory_service.add_session_to_memory(completed_session1)
-    print("Session added to memory.")
+    print(f"Triage Doctor Finder Agent Response: {final_response_text}")
 
-    # Turn 2: Recall the information in a new session
-    print("\n--- Turn 2: Recalling Information ---")
-    runner2 = Runner(
-        # Use the second agent, which has the memory tool
-        agent=triage_doctor_finder_agent,
-        app_name=APP_NAME,
-        session_service=session_service, # Reuse the same service
-        memory_service=memory_service   # Reuse the same service
+    print("----- Obtaining Session -----")
+    completed_session = await runner.session_service.get_session(app_name=APP_NAME, user_id=USER_ID, session_id=session_id)
+
+   
+    print("\n--- Adding Session to Memory ---")
+    await memory_service.add_session_to_memory(completed_session)
+    print("---- Session added to memory. ----")
+
+    session = await session_service.get_session(
+    app_name=APP_NAME, user_id=USER_ID, session_id = session_id
     )
-    session2_id = "session_recall"
-    await runner2.session_service.create_session(app_name=APP_NAME, user_id=USER_ID, session_id=session2_id)
-    user_input2 = Content(parts=[Part(text="What is my favorite project?")], role="user")
-    # Run the second agent
-    final_response_text_2 = "(No final response)"
-    async for event in runner2.run_async(user_id=USER_ID, session_id=session2_id, new_message=user_input2):
-        if event.is_final_response() and event.content and event.content.parts:
-            final_response_text_2 = event.content.parts[0].text
-    print(f"Agent 2 Response: {final_response_text_2}")
-    print("\n--- Adding Session 1 to Memory ---")
-    completed_session2 = await runner2.session_service.get_session(app_name=APP_NAME, user_id=USER_ID, session_id=session2_id)
-    await memory_service.add_session_to_memory(completed_session2)
-    print("Session added to memory.")
+
+    print("\n ======= This Session contains: ======= \n")
+    for event in session.events:
+      text = (
+          event.content.parts[0].text[:100]
+          if event.content and event.content.parts
+          else "(empty)"
+      )
+      chat = f"  {event.content.role}: {text}... "
+      print(f"  {event.content.role}: {text}... ")
+      
 
 
-  # Turn 2: Recall the information in a new session
-    print("\n--- Turn 2: Recalling Information ---")
-    runner3 = Runner(
-        # Use the second agent, which has the memory tool
-        agent=triage_doctor_finder_agent,
-        app_name=APP_NAME,
-        session_service=session_service, # Reuse the same service
-        memory_service=memory_service   # Reuse the same service
-    )
-    session3_id = "session_recall3"
-    await runner3.session_service.create_session(app_name=APP_NAME, user_id=USER_ID, session_id=session3_id)
-    user_input3 = Content(parts=[Part(text="What is my favorite project?")], role="user")
+if __name__ == "__main__":
+  asyncio.run(run_scenario())
 
-    # Run the second agent
-    final_response_text_3 = "(No final response)"
-    async for event in runner3.run_async(user_id=USER_ID, session_id=session3_id, new_message=user_input3):
-        if event.is_final_response() and event.content and event.content.parts:
-            final_response_text_3 = event.content.parts[0].text
-    print(f"Agent 3 Response: {final_response_text_3}")
-# To run this example, you can use the following snippet:
-asyncio.run(run_scenario())
 
-#await run_scenario()
