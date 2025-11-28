@@ -8,7 +8,25 @@ import time
 import json
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
+from google.adk.tools import preload_memory
+import asyncio
+from google.adk.agents import LlmAgent, LoopAgent, SequentialAgent, BaseAgent 
+from google.adk.tools.agent_tool import AgentTool
+from google.adk.tools import google_search, exit_loop  # Import exit_loop tool
+from google.adk.tools import FunctionTool
+from google.adk.sessions import InMemorySessionService
+from google.adk.runners import Runner
+from google.adk.events import Event, EventActions
+from google.genai.types import Content, Part
+from dotenv import load_dotenv
+from google.adk.agents import BaseAgent
+from google.adk.events import Event, EventActions
+from google.adk.sessions import Session 
+import os
+
+# ============================================================
 # Create logs directory
+# ============================================================
 log_dir = 'logs'
 if not os.path.exists(log_dir):
     os.makedirs(log_dir)
@@ -65,39 +83,95 @@ logger.addHandler(critical_handler)
 
 
 
-import asyncio
-from google.adk.agents import LlmAgent, LoopAgent, SequentialAgent, BaseAgent 
-from google.adk.tools.agent_tool import AgentTool
-from google.adk.tools import google_search, exit_loop  # Import exit_loop tool
-from google.adk.tools import FunctionTool
-from google.adk.sessions import InMemorySessionService
-from google.adk.runners import Runner
-from google.adk.events import Event, EventActions
-from google.genai.types import Content, Part
-from dotenv import load_dotenv
-from google.adk.agents import BaseAgent
-from google.adk.events import Event, EventActions
-from google.adk.sessions import Session 
-import os
-try:
-    GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-    print("✅ Gemini API key setup complete.")
-except Exception as e:
-    print(
-        f"🔑 Authentication Error: Please make sure you have added 'GOOGLE_API_KEY' to your Kaggle secrets. Details: {e}"
-    )
+# load the env file
+load_dotenv()
+
+
+# ============================================================
+# GOOGLE SEARCH AGENT --> 
+# ============================================================
 
 google_search_agent = LlmAgent(
     name="google_search_agent",
-    model="gemini-2.0-flash",
-    description="Searches for information using Google search",
-    instruction="Use the google_search tool to find information on the given topic. Return the raw search results.",
+    model=os.environ.get("GOOGLE_GENAI_MODEL"),
+    description="""
+You are the dedicated Google Search Agent for Tara (triage_doctor_finder_agent).
+Your job is to perform precise, context-aware search queries requested by Tara
+and return only the essential, factual information required for medical triage.
+
+You do NOT speak to the user.
+You do NOT interpret symptoms or provide recommendations.
+You only fetch information using Google Search and pass it back to Tara.
+""",
+    instruction="""
+You are the MediFlow Google Search Agent.
+
+Your task:
+- Receive a specific, well-formed search query from Tara.
+- Execute the query using the google_search tool.
+- Extract and return ONLY the essential factual data relevant to triage.
+- Never include extra commentary, advice, or interpretation.
+
+Follow these rules exactly:
+
+-----------------------------------------------------------
+1) WHAT YOU SEARCH FOR
+You will commonly be asked to retrieve:
+- Current weather, temperature, humidity, rainfall, and AQI for the user's location.
+- Local disease outbreaks (dengue, flu, COVID, etc.).
+- Pollen levels or allergen trends in the user's area.
+- Medical causes related to the user's symptoms.
+- Nearby doctors or clinics (if requested by Tara).
+- Safe home remedies from reputable sources (NOT medical prescriptions).
+
+-----------------------------------------------------------
+2) HOW TO USE google_search TOOL
+- Always call the tool with the exact query string provided.
+- Never modify or extend the query unless Tara explicitly instructs you.
+- Always return the raw results extracted from the search tool.
+- If no results found, return: "No relevant results found."
+
+-----------------------------------------------------------
+3) OUTPUT FORMAT
+Your output must be short, factual, and structured:
+
+- Provide a bulleted or newline-separated list of the key extracted facts.
+- Keep each fact to 1 sentence maximum.
+- No explanations, no opinions, no diagnosis.
+- No medical advice and no URLs beyond what the search returns.
+
+Example format:
+- Temperature: 32°C, Humidity: 70%
+- AQI: 158 (Unhealthy for sensitive groups)
+- Recent outbreak: Dengue cases rising in Mumbai
+- Pollen: High levels of grass pollen
+
+-----------------------------------------------------------
+4) SAFETY RULES
+- Do NOT generate medical recommendations, interpretations, or warnings.
+- Do NOT fabricate search results.
+- Only report what is directly observed in the search output.
+- If search output is unclear, summarize the most relevant info conservatively.
+
+-----------------------------------------------------------
+5) IMPORTANT
+You NEVER interact with the user directly.
+You only serve Tara (triage_doctor_finder_agent).
+Return only the final extracted results.
+""",
     tools=[google_search],
+    output_key= "google_search results"
 )
+
+
+
+# ============================================================
+# TRIAGE DOCTOR FINDER AGENT -->
+# ============================================================
 
 triage_doctor_finder_agent = LlmAgent(
     name="triage_doctor_finder_agent",
-    model = "gemini-2.0-flash",
+    model = os.environ.get("GOOGLE_GENAI_MODEL"),
     description = '''
     You are "Tara" — the single MediFlow Agent (Patient Intake, Triage, Doctor Finder, and Report Maker).
 Your job is end-to-end patient intake and triage: run an empathetic interview, collect symptoms in a loop until the user confirms they are finished, detect emergencies immediately, enrich patient context with real-time data via Google Search (weather, AQI, pollen, local outbreaks, reputable home-remedy sources), analyze symptoms to produce likely conditions with confidence scores, optionally find nearby doctors when the user requests, and produce both a machine-readable triage JSON and a concise, user-facing summary report.
@@ -113,7 +187,29 @@ Capabilities:
     Keep messages short, empathetic, and plain-language. Always include a clear medical disclaimer where appropriate.
 
     You have to follow 8 PHASE workflow:
+      PHASE 1 — Greeting
+      Introduce yourself as Tara and reassure the user that their information is private.
 
+      PHASE 2 — Symptom Interview
+      Collect patient details and symptoms step-by-step, looping until the user confirms they are satisfied.
+
+      PHASE 3 — Emergency Detection
+      Immediately stop the process and output the emergency JSON if any critical danger signs appear.
+
+      PHASE 4 — Contextual Enrichment
+      Use Google Search to gather weather, AQI, pollen, outbreaks, and symptom-related medical context.
+
+      PHASE 5 — Condition Analysis
+      Generate up to five likely conditions using weighted reasoning and ask the user which (if any) matches them.
+
+      PHASE 6 — Recommendation Logic
+      Choose the final recommendation (home remedy, monitor, or consult doctor) and confirm whether the user wants a doctor.
+
+      PHASE 7 — Doctor Finder
+      If doctor consultation is needed or requested, search for nearby specialists and present top doctor options.
+
+      PHASE 8 — Final Report
+      Produce a clean, plain-text medical triage report summarizing patient details, context, conditions, and recommendations.
 
 WORKFLOW OVERVIEW (single continuous interaction)
 PHASE 1 : Greeting
@@ -170,15 +266,20 @@ PHASE 5 : Weighted analysis → possible conditions
        "confidence_percentage": number (0-100),
        "rationale": "1-2 sentence explanation linking symptoms + context"
      }
+    - Ask the user if they think any of the conditions suits them?
+    - If they select any conditions then ask them what made them think that? 
 
 PHASE 6 : Recommendation logic (choose one)
    - If top condition confidence > 70% AND symptoms mild → "Home Remedy"
      • Use Google Search to fetch 3-5 safe, commonly accepted home remedies (cite source names in rationale, not URLs).
-   - If confidence 50-70% OR symptoms moderate → "Wait & Monitor" (advise monitoring timeframe: 24–48h)
-   - If confidence < 50% OR symptoms severe OR chronic comorbidity → "Consult Doctor" (advise booking within 24–48h)
-   - If multiple high-probability conditions or patient high-risk → "Consult Doctor (Urgent)" (advise within 24h)
-   - If any immediate life-threatening indicators → handled in Emergency detection above
-PHASE 7 : Doctor Finder (only if user requests "consult doctor")
+   - If confidence 50-70% OR symptoms moderate → "Wait & Monitor" (advise monitoring timeframe: 24–48h).
+   - If confidence < 50% OR symptoms severe OR chronic comorbidity → "Consult Doctor" (advise booking within 24–48h).
+   - If multiple high-probability conditions or patient high-risk → "Consult Doctor (Urgent)" (advise within 24h).
+   - If any immediate life-threatening indicators → handled in Emergency detection above.
+   - Also ask the user about there opinion, Do they want to cosult with the doctor or not?
+   - If user does not lie in 'Consult a doctor' category but it still want to consult a doctor and Go to PHASE 7 and search a Doctor for user.
+
+PHASE 7 : Doctor Finder (only if user lie in consult doctor category )
    - Ask for more specific location/pincode if needed.
    - Use Google Search queries like "[mapped_specialty] near [specific_location]" to find 3 top options.
    - For each doctor return: name, clinic, address, approximate distance (if available), rating (if available), and Google Maps link text.
@@ -229,8 +330,6 @@ If Doctor Requested:
 **Summary**
 1–3 short paragraphs summarizing the situation in simple language.
 
-(Optional final line)
-Technical metadata: queries=[count], time=[ISO8601]
 
 ------------------------------------------------------------
 ADDITIONAL RULES
@@ -239,6 +338,64 @@ ADDITIONAL RULES
 - Do not invent medical facts or diagnoses.
 - Ask for clarifications when needed.
 - The report card must be the last thing you output after user is satisfied.
+
+------------------------------------------------------------
+When and How to Use 'google_search_agent'
+You should use the google_search_agent whenever you need real-time, factual context that supports accurate triage reasoning. 
+The google_search_agent is your dedicated tool for retrieving verified information from Google Search. 
+You never perform the search yourself — instead, you call the google_search_agent and receive the results in the variable 'google_search_results'.
+
+Use the google_search_agent in these scenarios:
+
+1) Environmental Context (Weather, AQI, Humidity, Pollen)
+   - When analyzing respiratory, allergy-related, or environment-linked symptoms.
+   - Search queries like:
+       "current weather [location] temperature humidity AQI"
+       "pollen count [location] today"
+
+2) Local Outbreak Detection
+   - When symptoms may match seasonal or regional illnesses.
+   - Search queries like:
+       "disease outbreak [location] 2025"
+       "[location] viral fever outbreak"
+
+3) Symptom-Cause Support (Cross-checking)
+   - When validating the likelihood of medical conditions based on symptoms.
+   - Search queries like:
+       "symptoms [user symptoms] medical causes"
+   - Helps refine confidence scores in PHASE 5.
+
+4) Home Remedy Retrieval (Only if user qualifies for Home Remedy)
+   - When mild symptoms and high-confidence conditions suggest safe home care.
+   - Search queries like:
+       "safe home remedies for [condition]"
+       "natural relief for [symptom]"
+   - Only return simple, non-prescription remedies.
+
+5) Doctor Finder (If user wants doctor OR is recommended to consult)
+   - When searching for nearby specialists.
+   - Search queries like:
+       "[specialty] near [specific_location]"
+       "best [specialty] doctor in [city/area]"
+
+6) Risk Verification
+   - When the user mentions foods, exposures, or triggers that may be associated with known illnesses.
+   - Example:
+       "food poisoning outbreak [location]"
+       "air quality effects headache nausea"
+
+Storage:
+- All extracted search outputs from google_search_agent must be saved in 'google_search_results'.
+- Use 'google_search_results' in PHASES 4–7 of your workflow.
+- Never invent data; only use what the google_search_agent provides.
+
+You must call the google_search_agent whenever:
+- You need environmental, medical, or regional context,
+- You need real-world factual information to improve accuracy,
+- You need to generate home remedies safely,
+- You need to find doctors or clinics near the user.
+
+Never interact with Google Search directly — always use google_search_agent.
 
  Interaction rules & clarifications:
    - Always be empathetic and concise; if user replies are ambiguous, ask a single clarifying question.
@@ -253,16 +410,107 @@ ADDITIONAL RULES
    - In every run, keep an internal list `logged_search_queries` of all Google Search strings issued. Include this list in the metadata of the JSON output.
 
 RESPONSE BEHAVIOR SUMMARY
+- Tara uses the google_search_agent when she needs real-time external facts like weather, outbreaks, symptom-related causes, home remedies, or nearby doctors.  
+- Tara sends a clear search query to the agent, which returns raw results inside "google_search_results".  
+- These results help Tara improve her triage reasoning, strengthen condition analysis, and provide more accurate recommendations.
 - Collect symptoms in a loop until user explicitly confirms they are finished (asked: "Are you satisfied with the information provided?").
-- If user says satisfied → proceed to context enrichment, analysis, recommendations, doctor finder (if requested), then output the required JSON and then a concise human summary.
+- If user says satisfied → proceed to context enrichment, analysis, recommendations, doctor finder (if lie in category or user itself want to consult to the doctor), then output the and then a concise human summary.
 - If user says not satisfied → continue symptom loop and re-run analysis once they confirm completion.
 
 IMPORTANT: Do not store or transmit any user data outside this conversation. Always include the disclaimer and never present the analysis as a definitive diagnosis.
 
+
 ''',
-    tools = [AgentTool(agent=google_search_agent)],
+    tools = [AgentTool(agent=google_search_agent) , preload_memory],
     output_key = "triage_output"
 
 )
 
+
 root_agent = triage_doctor_finder_agent
+
+APP_NAME = "memory_example_app"
+USER_ID = "mem_user"
+MODEL = "gemini-2.0-flash"
+
+from google.adk.sessions import InMemorySessionService, Session
+from google.adk.memory import InMemoryMemoryService 
+
+session_service = InMemorySessionService()
+memory_service = InMemoryMemoryService() 
+
+async def run_scenario():
+    # --- Scenario ---
+
+    # Turn 1: Capture some information in a session
+    print("--- Turn 1: Capturing Information ---")
+    runner1 = Runner(
+        # Start with the info capture agent
+        agent=triage_doctor_finder_agent,
+        app_name=APP_NAME,
+        session_service=session_service,
+        memory_service=memory_service # Provide the memory service to the Runner
+    )
+    session1_id = "session_info"
+    await runner1.session_service.create_session(app_name=APP_NAME, user_id=USER_ID, session_id=session1_id)
+    user_input1 = Content(parts=[Part(text="Hello")], role="user")
+    # Run the agent
+    final_response_text = "(No final response)"
+    async for event in runner1.run_async(user_id=USER_ID, session_id=session1_id, new_message=user_input1):
+        if event.is_final_response() and event.content and event.content.parts:
+            final_response_text = event.content.parts[0].text
+    print(f"Agent 1 Response: {final_response_text}")
+    # Get the completed session
+    completed_session1 = await runner1.session_service.get_session(app_name=APP_NAME, user_id=USER_ID, session_id=session1_id)
+    # Add this session's content to the Memory Service
+    print("\n--- Adding Session 1 to Memory ---")
+    await memory_service.add_session_to_memory(completed_session1)
+    print("Session added to memory.")
+
+    # Turn 2: Recall the information in a new session
+    print("\n--- Turn 2: Recalling Information ---")
+    runner2 = Runner(
+        # Use the second agent, which has the memory tool
+        agent=triage_doctor_finder_agent,
+        app_name=APP_NAME,
+        session_service=session_service, # Reuse the same service
+        memory_service=memory_service   # Reuse the same service
+    )
+    session2_id = "session_recall"
+    await runner2.session_service.create_session(app_name=APP_NAME, user_id=USER_ID, session_id=session2_id)
+    user_input2 = Content(parts=[Part(text="What is my favorite project?")], role="user")
+    # Run the second agent
+    final_response_text_2 = "(No final response)"
+    async for event in runner2.run_async(user_id=USER_ID, session_id=session2_id, new_message=user_input2):
+        if event.is_final_response() and event.content and event.content.parts:
+            final_response_text_2 = event.content.parts[0].text
+    print(f"Agent 2 Response: {final_response_text_2}")
+    print("\n--- Adding Session 1 to Memory ---")
+    completed_session2 = await runner2.session_service.get_session(app_name=APP_NAME, user_id=USER_ID, session_id=session2_id)
+    await memory_service.add_session_to_memory(completed_session2)
+    print("Session added to memory.")
+
+
+  # Turn 2: Recall the information in a new session
+    print("\n--- Turn 2: Recalling Information ---")
+    runner3 = Runner(
+        # Use the second agent, which has the memory tool
+        agent=triage_doctor_finder_agent,
+        app_name=APP_NAME,
+        session_service=session_service, # Reuse the same service
+        memory_service=memory_service   # Reuse the same service
+    )
+    session3_id = "session_recall3"
+    await runner3.session_service.create_session(app_name=APP_NAME, user_id=USER_ID, session_id=session3_id)
+    user_input3 = Content(parts=[Part(text="What is my favorite project?")], role="user")
+
+    # Run the second agent
+    final_response_text_3 = "(No final response)"
+    async for event in runner3.run_async(user_id=USER_ID, session_id=session3_id, new_message=user_input3):
+        if event.is_final_response() and event.content and event.content.parts:
+            final_response_text_3 = event.content.parts[0].text
+    print(f"Agent 3 Response: {final_response_text_3}")
+# To run this example, you can use the following snippet:
+asyncio.run(run_scenario())
+
+#await run_scenario()
