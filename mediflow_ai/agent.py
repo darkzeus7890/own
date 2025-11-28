@@ -1,30 +1,32 @@
-import logging
-import os
-import time
-from datetime import datetime
-import logging
 import os
 import time
 import json
+import logging
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
-from google.adk.tools import preload_memory
+
 import asyncio
-from google.adk.agents import LlmAgent, LoopAgent, SequentialAgent, BaseAgent 
-from google.adk.tools.agent_tool import AgentTool
-from google.adk.tools import google_search, exit_loop  # Import exit_loop tool
-from google.adk.tools import FunctionTool
-from google.adk.sessions import InMemorySessionService
-from google.adk.runners import Runner
-from google.adk.events import Event, EventActions
-from google.genai.types import Content, Part
 from dotenv import load_dotenv
-from google.adk.agents import BaseAgent
-from google.adk.events import Event, EventActions
-from google.adk.sessions import Session 
-import os
+
+# Google ADK Tools & Agents
+from google.adk.tools import preload_memory, google_search, exit_loop
+from google.adk.tools.agent_tool import AgentTool
+from google.adk.tools import FunctionTool
+
+from google.adk.agents import LlmAgent, LoopAgent, SequentialAgent, BaseAgent
+
+# Runner & Session services
+from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService, Session
-from google.adk.memory import InMemoryMemoryService 
+
+# Memory
+from google.adk.memory import InMemoryMemoryService
+
+# Event system
+from google.adk.events import Event, EventActions
+
+# Google GenAI content objects
+from google.genai.types import Content, Part
 
 
 APP_NAME = "MediFlow_AI"
@@ -434,18 +436,25 @@ IMPORTANT: Do not store or transmit any user data outside this conversation. Alw
 )
 
 
-# root_agent = triage_doctor_finder_agent
+root_agent = triage_doctor_finder_agent
+
 
 
 
 session_service = InMemorySessionService()
 memory_service = InMemoryMemoryService() 
 
+# run_scenario_main.py
+import asyncio
+# from sqlite_store import init_db, save_session_to_db, get_session_events
+
+
+
+DB_PATH = "chat_history.db"
+
 async def run_scenario():
-  
     print("----- Initializing Runner -----")
     runner = Runner(
-       
         agent=triage_doctor_finder_agent,
         app_name=APP_NAME,
         session_service=session_service,
@@ -453,45 +462,51 @@ async def run_scenario():
     )
 
     print("----- Initializing Session ID, Creating Session -----")
-
     session_id = "chat001"
     await runner.session_service.create_session(app_name=APP_NAME, user_id=USER_ID, session_id=session_id)
 
-    print("----- Giving INPUT -----")
-    user_input = Content(parts=[Part(text="hello.")], role="user")
 
-    print("----- Taking Response -----")
-    final_response_text = "(No final response)"
-    async for event in runner.run_async(user_id=USER_ID, session_id=session_id, new_message=user_input):
-        if event.is_final_response() and event.content and event.content.parts:
-            final_response_text = event.content.parts[0].text
-    print(f"Triage Doctor Finder Agent Response: {final_response_text}")
+    while True:
+      usr_input = input("You (type 'stop' to stop): ")
+      if usr_input == 'stop':
+         break
+      print("----- Giving INPUT -----")
+      user_input = Content(parts=[Part(text=usr_input)], role="user")
 
-    print("----- Obtaining Session -----")
-    completed_session = await runner.session_service.get_session(app_name=APP_NAME, user_id=USER_ID, session_id=session_id)
+      print("----- Taking Response -----")
+      final_response_text = "(No final response)"
+      async for event in runner.run_async(user_id=USER_ID, session_id=session_id, new_message=user_input):
+          if event.is_final_response() and event.content and event.content.parts:
+              final_response_text = event.content.parts[0].text
+      print(f"Agent Response: {final_response_text}")
 
-   
-    print("\n--- Adding Session to Memory ---")
-    await memory_service.add_session_to_memory(completed_session)
-    print("---- Session added to memory. ----")
+      print("----- Obtaining Session -----")
+      completed_session = await runner.session_service.get_session(app_name=APP_NAME, user_id=USER_ID, session_id=session_id)
 
-    session = await session_service.get_session(
-    app_name=APP_NAME, user_id=USER_ID, session_id = session_id
-    )
+      # --- initialize DB and save session events ---
+      print("\n--- Initializing DB & saving session to sqlite ---")
+      await init_db(DB_PATH)
+      await save_session_to_db(DB_PATH, completed_session)
+      print("---- Session saved to SQLite. ----")
+    
+    '''
+    # --- example: read back and print rows saved
+    print("\n===== Events loaded from DB =====")
+    rows = await get_session_events(DB_PATH, session_id)
+    for r in rows:
+        print(f"[{r['event_index']}] {r['role']}: { (r['text'] or '')[:200] } (saved at {r['timestamp']})")'''
 
-    print("\n ======= This Session contains: ======= \n")
+    
+    # existing code that prints session.events (optional)
+    session = await session_service.get_session(app_name=APP_NAME, user_id=USER_ID, session_id = session_id)
+    print("\n ======= This Session contains (original in-memory): ======= \n")
     for event in session.events:
       text = (
           event.content.parts[0].text[:100]
           if event.content and event.content.parts
           else "(empty)"
       )
-      chat = f"  {event.content.role}: {text}... "
       print(f"  {event.content.role}: {text}... ")
-      
-
 
 if __name__ == "__main__":
   asyncio.run(run_scenario())
-
-
