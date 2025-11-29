@@ -4,6 +4,8 @@ import json
 from datetime import datetime
 from typing import Any
 
+# ================= CREATING SQL TABLE =================
+
 CREATE_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -21,6 +23,7 @@ DB_PRAGMAS = [
     "PRAGMA synchronous=NORMAL;",
 ]
 
+# ================= INITIALIZNG DATABASE =================
 async def init_db(db_path: str):
     """Create DB file and messages table if not exists."""
     async with aiosqlite.connect(db_path) as db:
@@ -29,6 +32,7 @@ async def init_db(db_path: str):
         await db.execute(CREATE_TABLE_SQL)
         await db.commit()
 
+# ================= SAVING SESSION TO DB =================
 async def save_session_to_db(db_path: str, completed_session: Any):
     """
     Save all events in 'completed_session' to messages table.
@@ -71,6 +75,8 @@ async def save_session_to_db(db_path: str, completed_session: Any):
                 await db.execute(insert_sql, (session_id, idx, role, text, timestamp, json.dumps(metadata)))
         await db.commit()
 
+
+# ================= RETRIEVING SAVED EVENTS  =================
 async def get_session_events(db_path: str, session_id: str):
     """Retrieve saved events for a session_id ordered by event_index."""
     async with aiosqlite.connect(db_path) as db:
