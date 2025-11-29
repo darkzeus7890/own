@@ -1,0 +1,26 @@
+from setuptools import setup, find_packages
+
+setup(
+    name="mediflow_ai",
+    version="0.1.0",
+    packages=find_packages(where="src"),
+    package_dir={"": "src"},
+    install_requires=[
+        "aiosqlite>=0.21.0",
+    "duckduckgo-search>=8.1.1",
+    "fastapi>=0.118.3",
+    "google-adk[eval]>=1.19.0",
+    "google-search-results>=2.4.2",
+    "gradio>=5.50.0",
+    "ipython>=9.7.0",
+    "jupyter-server>=2.17.0",
+    "langchain>=1.1.0",
+    "langchain-community>=0.4.1",
+    "langchain-google-genai>=3.2.0",
+    "langgraph>=1.0.4",
+    "pandas>=2.3.3",
+    "python-dotenv>=1.2.1",
+    "streamlit>=1.51.0",
+    ],
+    # optionally add other metadata ...
+)

@@ -1,0 +1,25 @@
+Metadata-Version: 2.4
+Name: mediflow_ai
+Version: 0.1.0
+Summary: Add your description here
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: aiosqlite>=0.21.0
+Requires-Dist: duckduckgo-search>=8.1.1
+Requires-Dist: fastapi>=0.118.3
+Requires-Dist: google-adk[eval]>=1.19.0
+Requires-Dist: google-search-results>=2.4.2
+Requires-Dist: gradio>=5.50.0
+Requires-Dist: ipython>=9.7.0
+Requires-Dist: jupyter-server>=2.17.0
+Requires-Dist: langchain>=1.1.0
+Requires-Dist: langchain-community>=0.4.1
+Requires-Dist: langchain-google-genai>=3.2.0
+Requires-Dist: langgraph>=1.0.4
+Requires-Dist: pandas>=2.3.3
+Requires-Dist: python-dotenv>=1.2.1
+Requires-Dist: streamlit>=1.51.0
+Dynamic: license-file
+
+# Kaggle-AI-Agents-Project

@@ -1,0 +1,182 @@
+{
+  "eval_set_id": "mediflow_core_test_suite_v1",
+  "name": "MediFlow Core 6 Test Cases",
+  "description": "Core tests for basic flows: greeting, symptom collection, mild illness, home remedy advice, doctor referral, emergency.",
+  "eval_cases": [
+    {
+      "eval_id": "test_01_greeting_basic_PASS",
+      "session_input": { "app_name": "mediflow_ai", "user_id": "core_user", "state": {} },
+      "conversation": [
+        {
+          "invocation_id": "core-1-user-hello",
+          "user_content": { "role": "user", "parts": [{ "text": "Hello" }] },
+          "intermediate_data": { "tool_uses": [], "intermediate_responses": [] },
+          "final_response": null
+        },
+        {
+          "invocation_id": "core-1-agent-greet",
+          "user_content": { "role": "user", "parts": [{ "text": "" }] },
+          "intermediate_data": { "tool_uses": [], "intermediate_responses": [] },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": "Hello — I'm Tara, MediFlow's triage assistant. I'll ask a few questions to understand your symptoms and suggest next steps. Your information stays in this conversation and will not be published."
+              }
+            ]
+          }
+        }
+      ]
+    },
+
+    {
+      "eval_id": "test_02_symptom_collection_name_PASS",
+      "session_input": { "app_name": "mediflow_ai", "user_id": "core_user", "state": {} },
+      "conversation": [
+        {
+          "invocation_id": "core-2-user-symptoms",
+          "user_content": { "role": "user", "parts": [{ "text": "I have fever and cough" }] },
+          "intermediate_data": { "tool_uses": [], "intermediate_responses": [] },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              { "text": "First I'll collect a few details. What is your name?" }
+            ]
+          }
+        }
+      ]
+    },
+
+    {
+      "eval_id": "test_05_analysis_mild_symptoms_PASS",
+      "session_input": { "app_name": "mediflow_ai", "user_id": "core_user", "state": {} },
+      "conversation": [
+        {
+          "invocation_id": "core-3-user-fullinfo",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              { "text": "Name: Priya, 28, female, Delhi. Slight sore throat and mild headache for 1 day. No other issues. Satisfied." }
+            ]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              { "name": "google_search_agent", "args": { "query": "symptoms sore throat mild headache causes" } }
+            ],
+            "intermediate_responses": [
+              [
+                "google_search_agent",
+                [
+                  { "text": "Common causes: viral URI (common cold), mild pharyngitis; no outbreak flagged." }
+                ]
+              ]
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": "Based on symptoms and context, likely a mild viral upper respiratory infection. Would you prefer home remedies or monitoring?"
+              }
+            ]
+          }
+        }
+      ]
+    },
+
+    {
+      "eval_id": "test_06_home_remedy_recommendation_PASS",
+      "session_input": { "app_name": "mediflow_ai", "user_id": "core_user", "state": {} },
+      "conversation": [
+        {
+          "invocation_id": "core-4-user-home",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              { "text": "Home remedies please." }
+            ]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "google_search_agent",
+                "args": { "query": "safe home remedies for common cold runny nose" }
+              }
+            ],
+            "intermediate_responses": [
+              [
+                "google_search_agent",
+                [
+                  { "text": "Remedies: rest & hydration; saline nasal spray; steam inhalation; honey for sore throat." }
+                ]
+              ]
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": "⚠️ Medical Disclaimer: I am not a medical professional. Suggested safe home measures: rest & hydration; saline nasal spray; steam inhalation. If symptoms worsen or persist >48h consult a doctor."
+              }
+            ]
+          }
+        }
+      ]
+    },
+
+    {
+      "eval_id": "test_07_doctor_consultation_urgent_PASS",
+      "session_input": { "app_name": "mediflow_ai", "user_id": "core_user", "state": {} },
+      "conversation": [
+        {
+          "invocation_id": "core-5-user-fullinfo",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              { "text": "Name: Suresh, 65, male, Bangalore. High fever 103F for 5 days, severe cough, weakness. I have diabetes. Taking metformin. Satisfied." }
+            ]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              { "name": "google_search_agent", "args": { "query": "disease outbreak Bangalore 2025" } }
+            ],
+            "intermediate_responses": []
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": "Given prolonged high fever and diabetes comorbidity, advise Consult Doctor (Urgent) — seek evaluation within 24h; go to ER if breathing worsens."
+              }
+            ]
+          }
+        }
+      ]
+    },
+
+    {
+      "eval_id": "test_03_emergency_chest_pain_PASS",
+      "session_input": { "app_name": "mediflow_ai", "user_id": "core_user", "state": {} },
+      "conversation": [
+        {
+          "invocation_id": "core-6-user-emergency",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              { "text": "I have severe chest pain and can't breathe properly" }
+            ]
+          },
+          "intermediate_data": { "tool_uses": [], "intermediate_responses": [] },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": "{\"emergency\": true, \"recommendation\": \"CALL_911_IMMEDIATELY\", \"message\": \"Please call your local emergency services now (e.g., 112 / 108 / 911) or go to the nearest ER.\"}"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
