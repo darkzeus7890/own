@@ -441,6 +441,8 @@ memory_service = InMemoryMemoryService()
 
 
 # ================= IMPORTS FROM SQLITE_STORE.PY FILE  =================
+# Uncomment the below line when you running this file in CLI , Comment it when you are running in ADK Web
+
 #from sqlite_store import init_db, save_session_to_db, get_session_events
 
 
