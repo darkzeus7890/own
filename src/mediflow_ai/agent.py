@@ -448,8 +448,13 @@ memory_service = InMemoryMemoryService()
 
 # ================= DATABASE PATH  =================
 
-DB_PATH = "database/chat_history.db"
+DB_PATH = "../../database/chat_history.db"
 
+
+db_folder = os.path.dirname(DB_PATH)
+if db_folder and not os.path.exists(db_folder):
+    os.makedirs(db_folder)
+    print(f"Created database directory: {db_folder}")
 
 # ================= TO RUN THE AGENTS (DO python src/mediflow_ai/agent.py from ROOT DIRECTORY) =================
 async def run_scenario():
@@ -507,7 +512,7 @@ async def run_scenario():
           else "(empty)"
       )
       print(f"  {event.content.role}: {text}... ")
-
+    await init_db(DB_PATH)
 
 if __name__ == "__main__":
   asyncio.run(run_scenario())
